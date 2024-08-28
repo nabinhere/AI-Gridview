@@ -24,6 +24,7 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from dotenv import load_dotenv
 import html_contents
+import predict_power
 
 
 network = ku_grid_model.create_network()
@@ -66,7 +67,7 @@ electrical_meter_total_power = 1000
 transformer_meter_total_power = 1000
 
 # path to save map
-MAP_PATH = r"G:\My Drive\D-VA\Main Project\Python implementation\ku_grid.html"
+MAP_PATH = r"C:\Users\nabin\OneDrive\Desktop\AI Gridview\AI_grid.html"
 
 # create a map object
 map = folium.Map(location=(27.619013147338894, 85.5387356168638), 
@@ -78,10 +79,6 @@ grid_layer = folium.FeatureGroup(name='Grid Layer').add_to(map)
 
 # add a layer for animation
 animation_layer = folium.FeatureGroup(name='Animation', show = False).add_to(map)
-
-# add a layer to display faults
-fault_layer = folium.FeatureGroup(name='Fault Detection', show=False).add_to(map)
-folium.LayerControl().add_to(map)
 
 # get coordinates of all the buses in the network
 bus_coords = []
@@ -126,32 +123,34 @@ def on_message(client, userdata, message):
     global grid_layer
 
     if message.topic == Topic[PHYSICS]:
-        physics_meter_total_power = total_power
+        # get the hour-ahead forecasted power
+        # for forecasted visualization, we will use the forecasted power
+        physics_meter_total_power = predict_power.get_predicted_power(total_power)
         print(f"got message from physics, power = {total_power}")
         network.loads.loc['Load16', 'p_set'] = physics_meter_total_power/1e6
         network.loads.loc['Load16', 'q_set'] = (physics_meter_total_power/1e6)*tan_phi
     elif message.topic == Topic[BIOTECH]:
-        biotech_meter_total_power = total_power
+        biotech_meter_total_power = predict_power.get_predicted_power(total_power)
         print(f"got message from biotech, power = {total_power}")
         network.loads.loc['Load19', 'p_set'] = biotech_meter_total_power/1e6
         network.loads.loc['Load19', 'q_set'] = (biotech_meter_total_power/1e6)*tan_phi
     elif message.topic == Topic[MANAGEMENT]:
-        management_meter_total_power = total_power
+        management_meter_total_power = predict_power.get_predicted_power(total_power)
         print(f"got message from management, power = {total_power}")
         network.loads.loc['Load5', 'p_set'] = management_meter_total_power/1e6
         network.loads.loc['Load5', 'q_set'] = (management_meter_total_power/1e6)*tan_phi
     elif message.topic == Topic[CIVIL]:
-        civil_meter_total_power = total_power
+        civil_meter_total_power = predict_power.get_predicted_power(total_power)
         print(f"got message from civil, power = {total_power}")
         network.loads.loc['Load6', 'p_set'] = civil_meter_total_power/1e6
         network.loads.loc['Load6', 'q_set'] = (civil_meter_total_power/1e6)*tan_phi
     elif message.topic == Topic[ELECTRICAL]:
-        electrical_meter_total_power = total_power
+        electrical_meter_total_power = predict_power.get_predicted_power(total_power)
         print(f"got message from electrical, power = {total_power}")
         network.loads.loc['Load49', 'p_set'] = electrical_meter_total_power/1e6
         network.loads.loc['Load49', 'q_set'] = (electrical_meter_total_power/1e6)*tan_phi
     elif message.topic == Topic[TRANSFORMER]:
-        transformer_meter_total_power = total_power
+        transformer_meter_total_power = predict_power.get_predicted_power(total_power)
         print(f"got message from transformer, power = {total_power}")
         metered_total_power = physics_meter_total_power+biotech_meter_total_power+management_meter_total_power+civil_meter_total_power+electrical_meter_total_power
         unmetered_total_power = transformer_meter_total_power - metered_total_power
@@ -387,32 +386,6 @@ def load_flow():
                         color=line_color, pulse_color='#FFFFFF',
                         weight=3, opacity=1.0).add_to(animation_layer)
                 
-            if show_fault:
-                # url of fault icon
-                flash_url = 'G:\\My Drive\\D-VA\\Main Project\\Python implementation\\images\\flash2.png'
-
-                # Coordinates for the flash icon
-                flash_y = (network.buses.loc[bus0].y + network.buses.loc[bus1].y)/2
-                flash_x = (network.buses.loc[bus0].x + network.buses.loc[bus1].x)/2
-                flash_coords = [flash_y, flash_x]
-                m_flash = (network.buses.loc[bus1].y - network.buses.loc[bus0].y)/(network.buses.loc[bus1].x-network.buses.loc[bus0].x)
-                theta_flash = math.atan(m_flash)    #angle in radian
-                theta_flash = theta_flash * 180/math.pi     #radian to degrees
-
-                # Create a custom icon using the image URL
-                icon = folium.CustomIcon(
-                    flash_url,
-                    icon_size=(70, 70),  # Size of the icon
-                    icon_anchor=(35, 35),  # Position of the icon anchor relative to the icon center
-                    popup_anchor=(0, -20),  # Position of the popup relative to the icon
-                )
-
-                # Add a marker with the custom icon to the map
-                folium.Marker(
-                    location=flash_coords,
-                    icon=icon,
-                    popup=f'A fault exists in {line_name}'
-                ).add_to(fault_layer)
             line_loading[f"{line_name}"] = percentage_loading
 
         bus_v_mags = dict(sorted(bus_v_mags.items(), key=lambda item: item[1][1], reverse = True))
