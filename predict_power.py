@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import datetime
 import pandas as pd
 import numpy as np
@@ -23,14 +24,45 @@ class LSTM(nn.Module):
     out = self.fc(out)
     return out
   
+class CNNLSTM(nn.Module):
+  def __init__(self, input_features, channels, hidden_size, num_lstm_layers, kernel_size, drop_out=0.0):
+    super(CNNLSTM, self).__init__()
+    self.conv1 = nn.Conv1d(in_channels=input_features, out_channels=channels, kernel_size=kernel_size, padding='same')
+    self.pool = nn.MaxPool1d(kernel_size=kernel_size, stride=1, padding=int((kernel_size-1)/2))
+    # self.conv2 = nn.Conv1d(in_channels=channels, out_channels=channels, kernel_size=kernel_size, padding='same')
+    self.lstm = nn.LSTM(channels, hidden_size, num_layers=num_lstm_layers, bias=True, batch_first=True, dropout=drop_out)
+    self.fc = nn.Linear(hidden_size, 1)
+
+  def forward(self, x):
+    out = self.pool(F.relu(self.conv1(x)))
+    # out = self.pool(F.relu(self.conv2(x)))
+    out = out.permute(0, 2, 1)
+    out, _ = self.lstm(out)
+    out = self.fc(out)
+    return out
+  
+PHYSICS = 0
+BIOTECH = 1
+MANAGEMENT = 2
+CIVIL = 3
 
 # load model
-PATH = 'lstm_mip.pth'
-model = LSTM(input_size=3, hidden_size=75, num_layers=2, drop_out=0.0)
-model.load_state_dict(torch.load(PATH))
-model.eval()
+PATH = {PHYSICS:'physics_cnnlstm_mip.pth', 
+        BIOTECH:'biotech_cnnlstm_mip.pth', 
+        CIVIL: 'civil_cnnlstm_mip.pth', 
+        MANAGEMENT: 'management_cnnlstm_mip.pth'}
 
-def get_predicted_power(total_power):
+# create corresponding load models
+models = {PHYSICS: CNNLSTM(input_features=3, channels=54, hidden_size=186, num_lstm_layers=1, kernel_size=3, drop_out=0.0),
+          BIOTECH: CNNLSTM(input_features=3, channels=86, hidden_size=120, num_lstm_layers=1, kernel_size=7, drop_out=0.0),
+          MANAGEMENT: CNNLSTM(input_features=3, channels=61, hidden_size=71, num_lstm_layers=1, kernel_size=5, drop_out=0.0),
+          CIVIL: CNNLSTM(input_features=3, channels=41, hidden_size=163, num_lstm_layers=3, kernel_size=3, drop_out=0.0)}
+
+for key, value in models.items():
+  models[key].load_state_dict(torch.load(PATH[key]))
+  models[key].eval()
+
+def get_predicted_power(total_power, building:int):
   timestamp = pd.Timestamp(datetime.datetime.now())
   # add 5 hours and 45 minutes to get Nepal Time
   timestamp=  timestamp + pd.Timedelta(hours=5, minutes=45)
@@ -51,10 +83,12 @@ def get_predicted_power(total_power):
   last_row = new_df.iloc[-1]
   last_row = last_row.values.reshape(1, -1)
 
-  last_row = last_row.reshape(-1, 1, 3)
+  last_row = last_row.reshape(-1, 3, 1)
 
   input_tensor = torch.tensor(last_row, dtype=torch.float32)
+  # print(building, input_tensor.shape)
 
+  model = models[building]
   with torch.no_grad():
       output = model(input_tensor)
       output = output.numpy()
@@ -64,7 +98,7 @@ def get_predicted_power(total_power):
       predicted_total_power = np.repeat(predicted_total_power, 3, axis=1)
       predicted_total_power = scaler.inverse_transform(predicted_total_power)
       predicted_total_power = predicted_total_power[:, 2]
-      print(timestamp)
+      # print(timestamp)
 
 
   return int(predicted_total_power[0])

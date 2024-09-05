@@ -122,38 +122,66 @@ def on_message(client, userdata, message):
     global map
     global grid_layer
 
+    timestamp = pd.Timestamp(datetime.datetime.now())
+    minute=  timestamp.minute
+
     if message.topic == Topic[PHYSICS]:
         # get the hour-ahead forecasted power
         # for forecasted visualization, we will use the forecasted power
-        physics_meter_total_power = predict_power.get_predicted_power(total_power)
-        print(f"got message from physics, power = {total_power}")
+        physics_meter_total_power = predict_power.get_predicted_power(total_power=total_power, building=PHYSICS)
+        # print(f"got message from physics, power = {total_power}")
         network.loads.loc['Load16', 'p_set'] = physics_meter_total_power/1e6
         network.loads.loc['Load16', 'q_set'] = (physics_meter_total_power/1e6)*tan_phi
+        if minute == 0:
+            print("")
+            print(timestamp)
+            print(f"physics total power now = {total_power}    predicted physics total power at {timestamp.hour+1} = {physics_meter_total_power}")
     elif message.topic == Topic[BIOTECH]:
-        biotech_meter_total_power = predict_power.get_predicted_power(total_power)
-        print(f"got message from biotech, power = {total_power}")
+        biotech_meter_total_power = predict_power.get_predicted_power(total_power, building=BIOTECH)
+        # print(f"got message from biotech, power = {total_power}")
         network.loads.loc['Load19', 'p_set'] = biotech_meter_total_power/1e6
         network.loads.loc['Load19', 'q_set'] = (biotech_meter_total_power/1e6)*tan_phi
+        if minute == 0:
+            print("")
+            print(timestamp)
+            print(f"biotech total power now = {total_power}    predicted biotech total power at {timestamp.hour+1} = {biotech_meter_total_power}")
     elif message.topic == Topic[MANAGEMENT]:
-        management_meter_total_power = predict_power.get_predicted_power(total_power)
-        print(f"got message from management, power = {total_power}")
+        management_meter_total_power = predict_power.get_predicted_power(total_power, building=MANAGEMENT)
+        # print(f"got message from management, power = {total_power}")
         network.loads.loc['Load5', 'p_set'] = management_meter_total_power/1e6
         network.loads.loc['Load5', 'q_set'] = (management_meter_total_power/1e6)*tan_phi
+        if minute == 0:
+            print("")
+            print(timestamp)
+            print(f"management total power now = {total_power}    predicted management total power at {timestamp.hour+1} = {management_meter_total_power}")
+    # since we don't have the models for other buildings, we will use the model for managemenr building
     elif message.topic == Topic[CIVIL]:
-        civil_meter_total_power = predict_power.get_predicted_power(total_power)
-        print(f"got message from civil, power = {total_power}")
+        civil_meter_total_power = predict_power.get_predicted_power(total_power, building=MANAGEMENT)
+        # print(f"got message from civil, power = {total_power}")
         network.loads.loc['Load6', 'p_set'] = civil_meter_total_power/1e6
         network.loads.loc['Load6', 'q_set'] = (civil_meter_total_power/1e6)*tan_phi
+        if minute == 0:
+            print("")
+            print(timestamp)
+            print(f"civil total power now = {total_power}    predicted civil total power at {timestamp.hour+1} = {civil_meter_total_power}")
     elif message.topic == Topic[ELECTRICAL]:
-        electrical_meter_total_power = predict_power.get_predicted_power(total_power)
-        print(f"got message from electrical, power = {total_power}")
+        electrical_meter_total_power = predict_power.get_predicted_power(total_power, building=MANAGEMENT)
+        # print(f"got message from electrical, power = {total_power}")
         network.loads.loc['Load49', 'p_set'] = electrical_meter_total_power/1e6
         network.loads.loc['Load49', 'q_set'] = (electrical_meter_total_power/1e6)*tan_phi
+        if minute == 0:
+            print("")
+            print(timestamp)
+            print(f"electrical total power now = {total_power}    predicted electrical total power at {timestamp.hour+1} = {electrical_meter_total_power}")
     elif message.topic == Topic[TRANSFORMER]:
-        transformer_meter_total_power = predict_power.get_predicted_power(total_power)
-        print(f"got message from transformer, power = {total_power}")
+        transformer_meter_total_power = predict_power.get_predicted_power(total_power, building=MANAGEMENT)
+        # print(f"got message from transformer, power = {total_power}")
         metered_total_power = physics_meter_total_power+biotech_meter_total_power+management_meter_total_power+civil_meter_total_power+electrical_meter_total_power
         unmetered_total_power = transformer_meter_total_power - metered_total_power
+        if minute == 0:
+            print("")
+            print(timestamp)
+            print(f"transformer total power now = {total_power}    predicted transformer total power at {timestamp.hour+1} = {transformer_meter_total_power}")
 
         # update the active and reactive powers of unmetered loads
         # in proportion to their circuit breaker rating
@@ -414,7 +442,11 @@ def load_flow():
         with open(MAP_PATH, 'w', encoding='utf-8') as f:
             f.write(refreshed_content)
         
-        time.sleep(60)
+        timestamp = pd.Timestamp(datetime.datetime.now())
+        if timestamp.minute == 0:
+            time.sleep(60*60)
+        else:
+            time.sleep(60*(60-timestamp.minute))
 
 
 #create a thread to handle the data operations
