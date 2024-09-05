@@ -71,3 +71,9 @@ def get_legend_html(element_name: str) -> str:
         return bus_legend_html
     elif element_name == "line":
         return line_legend_html
+    
+def get_predictive_text_html(hour:int) -> str:
+    predictive_text = f"""<div style="text-align: center; margin-top: 20px;">
+    <h2 style="font-weight: bold; ">Predicted Visualization of the Grid at {hour} O'clock</h2>
+    </div>"""
+    return predictive_text
